@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<title>MatchCode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --primary:#692466; --secondary-1:#96C341; --secondary-2:#F0D746; --text:#222; --bg:#fff; }
+  html, body { height: 100%; }
+  body { font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 28px; color:var(--text); background:var(--bg); }
+  h2{ color:var(--primary); margin-top:0; }
+  #resultBox { display:none; }
+  /* Overlays (nemen geen focus weg) */
+  #overlay, #overlay2 {
+    position: fixed; inset: 0; background: rgba(255,255,255,0.35);
+    display: none; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 9999;
+  }
+  #checkSvg, #crossSvg { width: 65vw; max-width: 800px; height: auto; filter: drop-shadow(0 6px 14px rgba(0,0,0,.25)); }
+  .label { font-weight: 600; color:var(--primary); }
+  input[type="text"] { font-size: 28px; padding: 14px 16px; width: clamp(320px, 58vw, 640px); border-radius: 10px; border:2px solid #8e5aa0; outline:none; transition:box-shadow .2s,border-color .2s; }
+  input[type="text"]:focus{ border-color:var(--primary); box-shadow:0 0 0 4px rgba(105,36,102,.12); }
+  /* Logboek knop rechtsboven */
+  #logToggle { position: fixed; top: 14px; right: 14px; z-index: 10000; background: var(--primary); color: #fff; border: none; border-radius: 999px; padding: 9px 16px; font-size: 14px; cursor: pointer; opacity: .92; }
+  #logToggle:hover { opacity: 1; }
+  /* Logpaneel (uitklapbaar) */
+  #logPanel { position: fixed; right: 14px; bottom: 14px; width: min(560px, 92vw); max-height: 56vh; overflow: auto; background: #fff; border: 1px solid #e6dff0; border-radius: 14px; box-shadow: 0 16px 40px rgba(0,0,0,.18); display: none; z-index: 10000; }
+  #logHeader { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #f2eef7; }
+  #logHeader h3 { margin: 0; font-size: 16px; color:var(--primary); }
+  #logBody { padding: 10px 12px; font-size: 14px; }
+  #logBody table { width: 100%; border-collapse: collapse; }
+  #logBody th, #logBody td { padding: 8px 8px; border-bottom: 1px solid #f6f2fb; text-align: left; }
+  #logBody th { position: sticky; top: 0; background: #fbf9ff; color:var(--primary); }
+  .btn { background: #f7f2c2; border: 1px solid #e9e2f3; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .btn:hover { background: #f4ea9c; }
+  .tag { display:inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; }
+  .tag.match { background:#dff2c6; color:#0d5a16; border:1px solid #b7db7a; }
+  .tag.mismatch { background:#fdeaea; color:#7a1010; border:1px solid #f1c9c9; }
+  /* Watermark */
+  .watermark { position: fixed; right: 10px; bottom: 6px; z-index: 1; font-size: 12px; color:#68416c; opacity:.55; user-select:none; pointer-events:none; }
+</style>
+</head>
+<body>
+<button id="logToggle" title="Logboek openen/sluiten">📒 Logboek</button>
+<h2>MatchCode</h2>
+<label class="label" for="scanInput">Scan code:</label><br>
+<input id="scanInput" type="text" placeholder="Scan code..." autocomplete="off" autofocus><br><br>
+<label class="label" for="scanInput2">Scan second code:</label><br>
+<input id="scanInput2" type="text" placeholder="Scan second code..." autocomplete="off"><br><br>
+<div id="resultBox"></div>
+<!-- ✅ Overlay bij match (groen) -->
+<div id="overlay" aria-hidden="true">
+  <svg id="checkSvg" viewBox="0 0 600 600" role="img" aria-label="Match">
+    <circle cx="300" cy="300" r="290" fill="#96C341"/>
+    <path d="M170 320 L270 420 L440 250" fill="none" stroke="#FFFFFF" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</div>
+<!-- ❌ Overlay bij geen match (rood) -->
+<div id="overlay2" aria-hidden="true">
+  <svg id="crossSvg" viewBox="0 0 600 600" role="img" aria-label="No match">
+    <circle cx="300" cy="300" r="290" fill="#E0362D"/>
+    <path d="M210 210 L390 390 M390 210 L210 390" stroke="#FFFFFF" stroke-width="90" stroke-linecap="round"/>
+  </svg>
+</div>
+<!-- Logboek paneel -->
+<div id="logPanel" aria-hidden="true">
+  <div id="logHeader">
+    <h3>Logboek</h3>
+    <div>
+      <button id="btnExport" class="btn" title="Exporteer CSV">⬇️ CSV</button>
+      <button id="btnClear" class="btn" title="Wis logboek">🗑️ Wissen</button>
+      <button id="btnClose" class="btn" title="Sluiten">✖</button>
+    </div>
+  </div>
+  <div id="logBody">
+    <table>
+      <thead><tr><th>Tijd</th><th>Code 1</th><th>Code 2</th><th>Resultaat</th></tr></thead>
+      <tbody id="logTable"></tbody>
+    </table>
+  </div>
+</div>
+
+  <div class="watermark">Made by Rik Muilwijk</div>
+
+<script>
+// ======= Focus & inputs =======
+window.addEventListener('DOMContentLoaded', () => {
+  queueMicrotask(() => { try { first.focus({preventScroll:true}); first.select?.(); } catch(e){} });
+});
+const first = document.getElementById('scanInput');
+const second = document.getElementById('scanInput2');
+const oMatch = document.getElementById('overlay');
+const oNoMatch = document.getElementById('overlay2');
+function isEnter(e){ return e.key === 'Enter' || e.keyCode === 13; }
+first.addEventListener('keydown', e => { if (isEnter(e)) { e.preventDefault(); second.focus({preventScroll:true}); second.select?.(); }});
+second.addEventListener('keydown', e => { if (isEnter(e)) { e.preventDefault(); compareCodes(); }});
+function show(el){ el.style.display='flex'; setTimeout(()=>{ el.style.display='none'; }, 850); }
+
+// ======= Audio: betrouwbaar & hard =======
+let audioCtx;
+async function ensureAudio(){
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+  } catch(e) {}
+}
+function beep({freq=440, duration=160, type='square', volume=0.35} = {}){
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.value = volume;
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    setTimeout(()=>{ osc.stop(); gain.disconnect(); }, duration);
+  } catch (e) { /* audio niet beschikbaar, sla stilletjes over */ }
+}
+// Warm de AudioContext alvast op bij eerste user gesture
+['keydown','pointerdown','click'].forEach(evt => {
+  window.addEventListener(evt, () => { ensureAudio(); }, { once:true, passive:true });
+});
+
+// ======= Logboek (localStorage) =======
+const LS_KEY = 'matchcode_log_v1';
+const MAX_ENTRIES = 5000; // bescherm tegen overvolle localStorage
+let log = [];
+function loadLog(){ try { log = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); if(!Array.isArray(log)) log = []; } catch(e){ log = []; } }
+function saveLog(){ try { localStorage.setItem(LS_KEY, JSON.stringify(log)); } catch(e) { console.warn('Kon log niet opslaan:', e); } }
+function addLog(entry){
+  log.push(entry);
+  if (log.length > MAX_ENTRIES) log.splice(0, log.length - MAX_ENTRIES);
+  saveLog();
+  if (logPanel.style.display === 'block') renderLog();
+}
+function renderLog(){
+  const tbody = document.getElementById('logTable');
+  tbody.innerHTML = log.slice().reverse().map(e => {
+    const cls = e.result === 'match' ? 'match' : 'mismatch';
+    const t = e.timeLocal || e.timeISO;
+    return `<tr><td>${t}</td><td>${escapeHtml(e.code1)}</td><td>${escapeHtml(e.code2)}</td><td><span class="tag ${cls}">${e.result}</span></td></tr>`;
+  }).join('');
+}
+function exportCSV(){
+  const rows = [["timestamp_iso","timestamp_local","code1","code2","result"]];
+  log.forEach(e => rows.push([e.timeISO||'', e.timeLocal||'', e.code1||'', e.code2||'', e.result||'']));
+  const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'scan_log_' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 1000);
+}
+function clearLog(){ if (confirm('Logboek wissen?')) { log = []; saveLog(); renderLog(); } }
+function escapeHtml(s){ return String(s).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c])); }
+// UI events
+const logToggle = document.getElementById('logToggle');
+const logPanel = document.getElementById('logPanel');
+const btnExport = document.getElementById('btnExport');
+const btnClear = document.getElementById('btnClear');
+const btnClose = document.getElementById('btnClose');
+logToggle.addEventListener('click', () => { logPanel.style.display = (logPanel.style.display==='block') ? 'none' : 'block'; if (logPanel.style.display==='block') renderLog(); });
+btnClose.addEventListener('click', () => { logPanel.style.display = 'none'; });
+btnExport.addEventListener('click', exportCSV);
+btnClear.addEventListener('click', clearLog);
+// laad logboek op start
+loadLog();
+
+// ======= Vergelijken + loggen =======
+async function compareCodes(){
+  const code1 = (first.value||'').trim();
+  const code2 = (second.value||'').trim();
+  if (!code1 || !code2) return;
+  const time = new Date();
+  const entry = {
+    timeISO: time.toISOString(),
+    timeLocal: time.toLocaleString(),
+    code1, code2,
+    result: (code1 === code2) ? 'match' : 'mismatch'
+  };
+  addLog(entry);
+  if (entry.result === 'match') {
+    show(oMatch);
+    first.value=''; second.value='';
+    setTimeout(()=> first.focus({preventScroll:true}), 950);
+  } else {
+    show(oNoMatch);
+    await ensureAudio();
+    // Twee korte, harde piepjes
+    beep({freq: 440, duration: 160, type:'square', volume: 0.35});
+    setTimeout(async ()=>{ await ensureAudio(); beep({freq: 330, duration: 160, type:'square', volume: 0.35}); }, 220);
+    second.value='';
+    setTimeout(()=> second.focus({preventScroll:true}), 250);
+  }
+  // ---- OPTIONEEL: naar centrale endpoint posten ----
+  // if (ENDPOINT_URL) { postToEndpoint(entry).catch(console.warn); }
+}
+// Optioneel: centrale logging (vul ENDPOINT_URL in en implementeer backend)
+const ENDPOINT_URL = '';
+async function postToEndpoint(entry){
+  const payload = { ...entry, userAgent: navigator.userAgent, page: location.href };
+  await fetch(ENDPOINT_URL + '/log', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+}
+</script>
+</body>
+</html>
